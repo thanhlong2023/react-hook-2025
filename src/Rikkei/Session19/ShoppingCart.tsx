@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import "./ShoppingCart.css"; // import file css
+import "./ShoppingCart.css";
 import { useTheme } from "../../context/ThemeContext";
+
+import { products as initialProducts } from "../../data/listProduct";
 
 type Product = {
   id: number;
@@ -19,17 +21,42 @@ type CartItem = {
 export default function ShoppingCart() {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
-
   const { theme, toggleTheme } = useTheme();
 
+  // lấy products + cart từ localStorage khi load trang
   useEffect(() => {
-    setProducts([
-      { id: 1, name: "Gạo", quantity: 10, price: 1000 },
-      { id: 2, name: "Cà phê", quantity: 12, price: 2000 },
-    ]);
+    // kiểm tra localStorage đã có products chưa
+    const storedProducts = localStorage.getItem("products");
+    if (storedProducts) {
+      setProducts(JSON.parse(storedProducts));
+    } else {
+      // nếu chưa có thì set mặc định
+      localStorage.setItem("products", JSON.stringify(initialProducts));
+      setProducts(initialProducts);
+    }
+
+    // cart cũng vậy
+    const storedCart = localStorage.getItem("cart");
+    if (storedCart) setCart(JSON.parse(storedCart));
   }, []);
 
+  // lưu cart xuống localStorage mỗi khi thay đổi
+  useEffect(() => {
+    localStorage.setItem("cart", JSON.stringify(cart));
+  }, [cart]);
+
+  // helper cập nhật products và lưu xuống localStorage
+  const updateProducts = (updated: Product[]) => {
+    setProducts(updated);
+    localStorage.setItem("products", JSON.stringify(updated));
+  };
+
   const handleAddToCart = (product: Product) => {
+    if (product.quantity <= 0) {
+      alert("Sản phẩm đã hết hàng");
+      return;
+    }
+
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.id === product.id);
       if (existing) {
@@ -50,25 +77,59 @@ export default function ShoppingCart() {
         ];
       }
     });
+
+    // giảm tồn kho
+    updateProducts(
+      products.map((p) =>
+        p.id === product.id ? { ...p, quantity: p.quantity - 1 } : p
+      )
+    );
   };
 
   const handleIncrease = (id: number) => {
+    const product = products.find((p) => p.id === id);
+    if (!product || product.quantity <= 0) {
+      alert("Hết hàng!");
+      return;
+    }
+
     setCart((prevCart) =>
       prevCart.map((item) =>
         item.id === id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item
       )
     );
+
+    updateProducts(
+      products.map((p) =>
+        p.id === id ? { ...p, quantity: p.quantity - 1 } : p
+      )
+    );
   };
 
   const handleDecrease = (id: number) => {
+    let removed = false;
+
     setCart((prevCart) =>
       prevCart
-        .map((item) =>
-          item.id === id
-            ? { ...item, cartQuantity: Math.max(1, item.cartQuantity - 1) }
-            : item
-        )
-        .filter((item) => item.cartQuantity > 0)
+        .map((item) => {
+          if (item.id === id) {
+            if (item.cartQuantity > 1) {
+              return { ...item, cartQuantity: item.cartQuantity - 1 };
+            } else {
+              removed = true;
+              return null; // xoá item khỏi cart
+            }
+          }
+          return item;
+        })
+        .filter((item): item is CartItem => item !== null)
+    );
+
+    // trả lại tồn kho
+    updateProducts(
+      products.map((p) =>
+        p.id === id ? { ...p, quantity: p.quantity + 1 } : p
+      )
     );
   };
 
@@ -84,6 +145,7 @@ export default function ShoppingCart() {
           {theme === "light" ? "🌙 Chế độ tối" : "☀️ Chế độ sáng"}
         </button>
       </div>
+
       <h1 className="title">Danh sách sản phẩm</h1>
       <div className="products">
         {products.map((product) => (
